@@ -22,9 +22,10 @@ interface ImageCarouselProps {
     title?: string;
     description?: string;
   }[];
+  reducedMotion?: boolean; // Add prop for reduced motion on mobile
 }
 
-const ImageCarousel = ({ images }: ImageCarouselProps) => {
+const ImageCarousel = ({ images, reducedMotion = false }: ImageCarouselProps) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [startX, setStartX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -35,6 +36,10 @@ const ImageCarousel = ({ images }: ImageCarouselProps) => {
   // Animation states
   const [isAnimating, setIsAnimating] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Animation duration based on reducedMotion prop
+  const animationDuration = reducedMotion ? 400 : 700;
+  const blurAmount = reducedMotion ? '0px' : '2px';
 
   const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     if (isTransitioning) return;
@@ -79,7 +84,7 @@ const ImageCarousel = ({ images }: ImageCarouselProps) => {
       setTimeout(() => {
         setIsTransitioning(false);
         setDragPercent(0);
-      }, 700);
+      }, animationDuration);
     } else {
       // Reset if not dragged enough
       setDragPercent(0);
@@ -92,7 +97,7 @@ const ImageCarousel = ({ images }: ImageCarouselProps) => {
     setCurrentIndex((prevIndex) =>
       prevIndex === images.length - 1 ? 0 : prevIndex + 1
     );
-    setTimeout(() => setIsAnimating(false), 700);
+    setTimeout(() => setIsAnimating(false), animationDuration);
   };
 
   const goToPrev = () => {
@@ -100,7 +105,7 @@ const ImageCarousel = ({ images }: ImageCarouselProps) => {
     setCurrentIndex((prevIndex) =>
       prevIndex === 0 ? images.length - 1 : prevIndex - 1
     );
-    setTimeout(() => setIsAnimating(false), 700);
+    setTimeout(() => setIsAnimating(false), animationDuration);
   };
 
   const goToSlide = (index: number) => {
@@ -111,21 +116,23 @@ const ImageCarousel = ({ images }: ImageCarouselProps) => {
     setTimeout(() => {
       setIsAnimating(false);
       setIsTransitioning(false);
-    }, 700);
+    }, animationDuration);
   };
 
-  // Auto play (optional)
+  // Auto play (disabled on mobile/reduced motion for better performance)
   useEffect(() => {
+    if (reducedMotion) return; // Skip auto-play for reduced motion
+    
     const timer = setInterval(() => {
       if (!isDragging) {
         setIsTransitioning(true);
         goToNext();
-        setTimeout(() => setIsTransitioning(false), 700);
+        setTimeout(() => setIsTransitioning(false), animationDuration);
       }
     }, 20000);
 
     return () => clearInterval(timer);
-  }, [isDragging]);
+  }, [isDragging, reducedMotion, animationDuration]);
 
   // Get the previous, current and next index
   const prevIndex = (currentIndex - 1 + images.length) % images.length;
@@ -137,6 +144,11 @@ const ImageCarousel = ({ images }: ImageCarouselProps) => {
     let transform = 'translateX(0)';
     let opacity = 0;
     let zIndex = 0;
+
+    // Simpler transitions for reduced motion
+    const transitionStyle = reducedMotion
+      ? `transform ${animationDuration}ms ease, opacity ${animationDuration}ms ease`
+      : `transform ${animationDuration}ms cubic-bezier(0.25, 1, 0.5, 1), opacity ${animationDuration}ms ease-out`;
 
     if (index === currentIndex) {
       // Current slide
@@ -154,27 +166,39 @@ const ImageCarousel = ({ images }: ImageCarouselProps) => {
       zIndex = 5;
       opacity = Math.min(1, dragPercent / 30); // Fade in as we drag
 
-      // Start from middle (50% offset), then gradually move to left edge (0% offset)
-      const startOffset = 50;
-      const moveDistance = startOffset * (1 - Math.min(1, dragPercent / 100));
-      transform = `translateX(${100 - moveDistance}%)`;
+      if (reducedMotion) {
+        // Simpler animation for mobile
+        transform = 'translateX(100%)';
+        opacity = isTransitioning ? 1 : opacity;
+      } else {
+        // Full animation for desktop
+        const startOffset = 50;
+        const moveDistance = startOffset * (1 - Math.min(1, dragPercent / 100));
+        transform = `translateX(${100 - moveDistance}%)`;
+      }
     }
     else if (index === prevIndex && (dragPercent < 0 || isTransitioning)) {
       // Previous slide, revealed when dragging backward
       zIndex = 5;
       opacity = Math.min(1, Math.abs(dragPercent) / 30);
 
-      // Start from middle (-50% offset), then gradually move to right edge (0% offset)
-      const startOffset = 50;
-      const moveDistance = startOffset * (1 - Math.min(1, Math.abs(dragPercent) / 100));
-      transform = `translateX(${-100 + moveDistance}%)`;
+      if (reducedMotion) {
+        // Simpler animation for mobile
+        transform = 'translateX(-100%)';
+        opacity = isTransitioning ? 1 : opacity;
+      } else {
+        // Full animation for desktop
+        const startOffset = 50;
+        const moveDistance = startOffset * (1 - Math.min(1, Math.abs(dragPercent) / 100));
+        transform = `translateX(${-100 + moveDistance}%)`;
+      }
     }
 
     return {
       transform,
       opacity,
       zIndex,
-      transition: isDragging ? 'none' : 'transform 700ms cubic-bezier(0.25, 1, 0.5, 1), opacity 700ms ease-out',
+      transition: isDragging ? 'none' : transitionStyle,
       position: 'absolute',
       inset: '0',
     };
@@ -226,35 +250,37 @@ const ImageCarousel = ({ images }: ImageCarouselProps) => {
               alt={image.alt}
               fill
               className="object-cover"
-              priority={index === currentIndex ||
-                index === nextIndex ||
-                index === prevIndex}
-              quality={90}
+              priority={index === currentIndex}
+              loading={index === currentIndex ? "eager" : "lazy"}
+              quality={reducedMotion ? 75 : 90}
             />
           </div>
         ))}
       </div>
 
-      {/* Subtle full-screen blur overlay */}
-      <div className="absolute inset-0 bg-black/15 backdrop-blur-[2px] z-20"></div>
+      {/* Subtle full-screen blur overlay - disabled for reduced motion */}
+      <div className={`absolute inset-0 bg-black/15 backdrop-blur-[${blurAmount}] z-20`}></div>
 
       {/* Text overlay positioned in the middle left */}
       <div
-        className="absolute inset-0 z-40 flex items-center transform transition-opacity duration-500"
-        style={{ opacity: isTransitioning ? 0 : 1 }}
+        className="absolute inset-0 z-40 flex items-center transform transition-opacity"
+        style={{ 
+          opacity: isTransitioning ? 0 : 1,
+          transitionDuration: `${animationDuration}ms`
+        }}
       >
-        <div className="pl-10 md:pl-16 lg:pl-24 w-full md:w-2/3 lg:w-1/2 pr-4">
-          <div className="p-8">
-            <div className="mb-4">
+        <div className="pl-6 md:pl-16 lg:pl-24 w-full md:w-2/3 lg:w-1/2 pr-4">
+          <div className="p-4 md:p-8">
+            <div className="mb-2 md:mb-4">
               <StarRating />
             </div>
-            <h2 className={`text-3xl md:text-4xl lg:text-5xl font-bold mb-4 text-white drop-shadow-lg ${jost.className}`}>
+            <h2 className={`text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-2 md:mb-4 text-white drop-shadow-lg ${jost.className}`}>
               {images[currentIndex]?.title || 'Riad Emberiza Sahari'}
             </h2>
-            <p className={`text-lg text-white/90 mb-6 drop-shadow-md ${jost.className}`}>
+            <p className={`text-base sm:text-lg text-white/90 mb-4 md:mb-6 drop-shadow-md ${jost.className}`}>
               {images[currentIndex]?.description || 'Experience authentic Moroccan hospitality in our beautiful riad in the heart of the medina.'}
             </p>
-            <button className={`bg-[#d1a163] hover:bg-amber-700 text-white px-6 py-3 text-lg font-medium transition-colors ${jost.className}`}>
+            <button className={`bg-[#d1a163] hover:bg-amber-700 text-white px-4 md:px-6 py-2 md:py-3 text-base md:text-lg font-medium transition-colors ${jost.className}`}>
               Découvrir
             </button>
           </div>
@@ -262,7 +288,7 @@ const ImageCarousel = ({ images }: ImageCarouselProps) => {
       </div>
 
       {/* Booking Form at the bottom */}
-      <BookingForm onSubmit={handleBookingSubmit} />
+      <BookingForm onSubmit={handleBookingSubmit} className={reducedMotion ? "sm:max-w-full md:max-w-[90%]" : ""} />
     </div>
   );
 };
